@@ -64,9 +64,9 @@ in
               portsByName = {
                 web = 8443;
                 inform = 8080;
-                portalRedir = 8880;
-                portalRedirTLS = 8843;
-                mobileSpeedTest = 6789;
+                portalredir = 8880;
+                portalredir-tls = 8843;
+                speed-test = 6789;
                 stun = {
                   containerPort = 3478;
                   protocol = "UDP";
