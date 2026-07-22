@@ -39,6 +39,7 @@ in
 {
   options.homelab.services.unifi = {
     enable = lib.mkEnableOption "Unifi Controller";
+    debug = lib.mkEnableOption "debug mode";
   };
   imports = [ ];
   config = lib.mkIf cfg.enable {
