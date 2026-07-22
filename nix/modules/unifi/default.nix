@@ -7,6 +7,8 @@
 }:
 let
   cfg = config.homelab.services.unifi;
+  stateDir = "/var/lib/unifi";
+  jrePackage = pkgs.jdk25_headless;
   image = pkgs.dockerTools.buildImage {
     name = "cluster.local/unifi";
     copyToRoot =
@@ -20,7 +22,18 @@ let
       "CURL_CA_BUNDLE=/etc/ssl/certs/ca-bundle.crt"
       "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
     ];
-    config.Entrypoint = [ (pkgs.lib.getExe pkgs.unifi) ];
+    config.Entrypoint = [
+      "${jrePackage}/bin/java"
+      "java"
+      "--add-opens=java.base/java.lang=ALL-UNNAMED"
+      "--add-opens=java.base/java.time=ALL-UNNAMED"
+      "--add-opens=java.base/sun.security.util=ALL-UNNAMED"
+      "--add-opens=java.base/java.io=ALL-UNNAMED"
+      "--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
+      "-jar"
+      "${stateDir}/lib/ace.jar"
+    ];
+    config.Cmd = [ "start" ];
   };
 in
 {
@@ -29,7 +42,7 @@ in
   };
   imports = [ ];
   config = lib.mkIf cfg.enable {
-    homelab.cluster.backup.volumes.unifi.unifi = [ "/library" ];
+    homelab.cluster.backup.volumes.unifi.unifi = [ stateDir ];
     kubetree.resources.unifi = {
       service-macro = {
         apiVersion = "cluster.local";
@@ -42,7 +55,7 @@ in
           allowEgress = [
             "internet"
           ];
-          dataPath = "/var/lib/unifi";
+          dataPath = stateDir;
           ingressPort = 8443;
           servicePodSpec = {
             mainContainer = {
