@@ -8,7 +8,7 @@
 let
   ccfg = config.homelab.cluster;
   cfg = config.homelab.clientVPN;
-  flakePkgs = self.packages.${pkgs.stdenv.hostPlatform.system};
+  container-utils = inputs.homelab.packages.${pkgs.stdenv.hostPlatform.system}.container-utils;
   hllib = inputs.homelab.lib;
   ipv4 = hllib.ip.v4;
   listenPort = 51820;
@@ -261,7 +261,7 @@ in
             allowEgress = spec.allowEgress;
             servicePodSpec = {
               initContainersByName.render-config = {
-                image = "${flakePkgs.container-utils.buildArgs.name}:${flakePkgs.container-utils.imageTag}";
+                image = "${container-utils.buildArgs.name}:${container-utils.imageTag}";
                 imagePullPolicy = "Never";
                 args = [
                   ''
