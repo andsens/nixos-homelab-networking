@@ -52,6 +52,7 @@
           };
           nixosModules = {
             client-vpn = importApply ./nix/modules/client-vpn { inherit self inputs; };
+            unifi = importApply ./nix/modules/unifi { inherit self inputs; };
           };
         };
       }
