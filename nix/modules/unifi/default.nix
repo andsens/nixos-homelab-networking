@@ -16,6 +16,7 @@ let
       [
         unifi
         cacert
+        jrePackage
       ]
       ++ lib.optionals cfg.debug ccfg.debugTools;
     config.Env = [
@@ -43,6 +44,7 @@ in
   };
   imports = [ ];
   config = lib.mkIf cfg.enable {
+    services.k3s.images = [ image ];
     homelab.cluster.backup.volumes.unifi.unifi = [ stateDir ];
     kubetree.resources.unifi = {
       service-macro = {
@@ -61,6 +63,7 @@ in
           servicePodSpec = {
             mainContainer = {
               image = "${image.buildArgs.name}:${image.imageTag}";
+              imagePullPolicy = "Never";
               portsByName = {
                 web = 8443;
                 inform = 8080;
