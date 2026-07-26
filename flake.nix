@@ -3,7 +3,6 @@
   inputs = {
     systems.url = "github:nix-systems/default-linux";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-    nixpkgs-mongodb-pin.url = "github:NixOS/nixpkgs/9b696460ac78b5ccfc17c854d8c976f20456e943";
     flake-parts.url = "github:hercules-ci/flake-parts";
     kube-generators.url = "github:farcaller/nix-kube-generators";
     kubetree = {
@@ -49,27 +48,20 @@
         systems = import systems;
         flake = {
           lib = {
-            importsApply = map (path: importApply path { inherit self inputs; });
+            importsApply = map (path: importApply path { inherit inputs self; });
           };
           nixosModules = {
-            client-vpn = importApply ./nix/modules/client-vpn { inherit self inputs; };
-            unifi = importApply ./nix/modules/unifi { inherit self inputs; };
+            client-vpn = importApply ./nix/modules/client-vpn { inherit inputs self; };
+            unifi = importApply ./nix/modules/unifi { inherit inputs self; };
           };
         };
-        perSystem = { system }: {
-          _module.args.pkgs = import inputs.nixpkgs {
-            inherit system;
-            overlays = [
-              (final: prev: {
-                mongodb-7_0 =
-                  (import inputs.nixpkgs-mongodb-pin {
-                    inherit system;
-                  }).mongodb-7_0;
-              })
-            ];
-            config = { };
+        perSystem =
+          { pkgs, system, ... }:
+          {
+            packages = {
+              unifi-os = pkgs.callPackage ./nix/packages/unifi-os { };
+            };
           };
-        };
       }
     );
 }
