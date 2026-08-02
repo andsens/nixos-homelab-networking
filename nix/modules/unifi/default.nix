@@ -1,4 +1,4 @@
-{ inputs, ... }:
+{ inputs, self, ... }:
 {
   lib,
   pkgs,
@@ -55,9 +55,23 @@ in
   options.homelab.services.unifi = {
     enable = lib.mkEnableOption "Unifi Controller";
     debug = lib.mkEnableOption "debug mode";
+    reservedIPs = lib.mkOption {
+      description = "Reserved IPs for the Unifi loadbalancer";
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+    };
   };
-  imports = [ ];
+  imports = [
+    self.nixosModules.routed-ippool
+
+  ];
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = config.homelab.services.postgresql.enable;
+        message = "Unifi depends on the routed loadbalancer IP Pool module. Enable with `homelab.routed-ippool = { enable=true; lbIpBlock4.cidr = ...; }`";
+      }
+    ];
     services.k3s.images = [ image ];
     homelab.cluster.backup.volumes.unifi.unifi = [ "/backup" ];
     kubetree.resources.unifi = {
@@ -86,8 +100,16 @@ in
         metadata = {
           namespace = "unifi";
           name = "unifi";
-          labels."app.kubernetes.io/name" = "unifi";
-          annotations."external-dns.alpha.kubernetes.io/hostname" = "unifi.${ccfg.domain}";
+          labels = {
+            "app.kubernetes.io/name" = "unifi";
+            "cluster.local/ippool" = "routed";
+          };
+          annotations = {
+            "external-dns.alpha.kubernetes.io/hostname" = "unifi.${ccfg.domain}";
+          }
+          // lib.optionalAttrs (builtins.length cfg.reservedIPs > 0) ({
+            "lbipam.cilium.io/ips" = lib.join "," cfg.reservedIPs;
+          });
         };
         spec = {
           type = "LoadBalancer";
@@ -152,6 +174,7 @@ in
             "local-lan"
           ];
           allowEgress = [
+            "local-lan"
             "internet"
           ];
           dataPath = "/var/lib/unifi/data";

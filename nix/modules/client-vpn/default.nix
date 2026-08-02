@@ -40,36 +40,6 @@ in
   options.homelab.clientVPN = {
     enable = lib.mkEnableOption "the client VPN gateway";
     debug = lib.mkEnableOption "debug mode";
-    lbIpBlock4.cidr = lib.mkOption {
-      description = "IPv4 CIDR for the VPN gateways";
-      type = lib.types.nullOr lib.types.str;
-      default = "10.45.0.0/16";
-    };
-    lbIpBlock4.start = lib.mkOption {
-      description = "IPv4 Pool range start for the VPN gateways";
-      type = lib.types.str;
-      default = "10.45.0.2";
-    };
-    lbIpBlock4.stop = lib.mkOption {
-      description = "IPv4 Pool range end for the VPN gateways";
-      type = lib.types.str;
-      default = "10.45.0.254";
-    };
-    lbIpBlock6.cidr = lib.mkOption {
-      description = "IPv6 CIDR for the VPN gateways";
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-    };
-    lbIpBlock6.start = lib.mkOption {
-      description = "IPv6 Pool range start for the VPN gateways";
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-    };
-    lbIpBlock6.stop = lib.mkOption {
-      description = "IPv6 Pool range end for the VPN gateways";
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-    };
     groups = lib.mkOption {
       description = "VPN client access groups, indexed by group name. Each group is a wireguard endpoint.";
       type = lib.types.attrsOf (
@@ -134,8 +104,17 @@ in
       );
     };
   };
-  imports = [ inputs.setup-secrets.nixosModules.default ];
+  imports = [
+    inputs.setup-secrets.nixosModules.default
+    self.nixosModules.routed-ippool
+  ];
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = config.homelab.services.postgresql.enable;
+        message = "Client VPN depends on the routed loadbalancer IP Pool module. Enable with `homelab.routed-ippool = { enable=true; lbIpBlock4.cidr = ...; }`";
+      }
+    ];
     services.k3s.images = [ image ];
     setup-secrets = {
       sources = lib.mapAttrs' (
@@ -170,25 +149,6 @@ in
         apiVersion = "v1";
         kind = "Namespace";
         metadata.name = "client-vpn";
-      };
-      cilium-lbippool = {
-        apiVersion = "cilium.io/v2";
-        kind = "CiliumLoadBalancerIPPool";
-        metadata.name = "client-vpn";
-        spec.blocks =
-          (lib.optional ccfg.enableIPv4 (
-            if cfg.lbIpBlock4.start != null then
-              { inherit (cfg.lbIpBlock4) start stop; }
-            else
-              { inherit (cfg.lbIpBlock4) cidr; }
-          ))
-          ++ (lib.optional ccfg.enableIPv6 (
-            if cfg.lbIpBlock6.start != null then
-              { inherit (cfg.lbIpBlock6) start stop; }
-            else
-              { inherit (cfg.lbIpBlock6) cidr; }
-          ));
-        spec.serviceSelector.matchLabels."app.kubernetes.io/name" = "client-vpn";
       };
       config = {
         apiVersion = "v1";
@@ -328,6 +288,7 @@ in
             labels = {
               "app.kubernetes.io/name" = "client-vpn";
               "app.kubernetes.io/component" = group;
+              "cluster.local/ippool" = "routed";
             };
             annotations = {
               "external-dns.alpha.kubernetes.io/hostname" = "${group}-vpn.${ccfg.domain}";
