@@ -195,7 +195,9 @@ in
           kubectl create secret generic -n client-vpn --dry-run=client -oyaml client-vpn-private-keys \
             ${
               lib.join "\\ \n" (
-                map (group: ''--from-literal=${group}="$CLIENT_VPN_${group}"'') (builtins.attrNames cfg.groups)
+                map (group: ''--from-literal=${group}="$CLIENT_VPN_${lib.toUpper group}"'') (
+                  builtins.attrNames cfg.groups
+                )
               )
             } \
             -oyaml | \
