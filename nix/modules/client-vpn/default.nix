@@ -10,7 +10,6 @@ let
   cfg = config.homelab.clientVPN;
   container-utils = inputs.homelab.packages.${pkgs.stdenv.hostPlatform.system}.container-utils;
   hllib = inputs.homelab.lib;
-  libIPv4 = hllib.ip.v4;
   listenPort = 51820;
   upScript = pkgs.writeShellScriptBin "up.sh" ''
     ${lib.getExe' pkgs.wireguard-tools "wg-quick"} up clients
@@ -52,17 +51,7 @@ in
       description = "VPN client access groups, indexed by group name. Each group is a wireguard endpoint.";
       type = lib.types.attrsOf (
         lib.types.submodule (
-          { name, ... }@subm:
-          let
-            parsedCIDR4 = libIPv4.fromString subm.config.cidr4;
-            peerIPs = lib.mergeAttrsList (
-              lib.imap (idx: spec: {
-                ${spec.name} = libIPv4.cidrIndex parsedCIDR4 (1 + idx) // {
-                  prefixLength = 32;
-                };
-              }) (lib.sortOn ({ name, value }: name) (lib.attrsToList cfg.groups.${name}.peers))
-            );
-          in
+          { ... }:
           {
             options = {
               allowEgress = lib.mkOption {
@@ -78,13 +67,19 @@ in
                 description = "IPv4 CIDR of the tunnel";
                 type = lib.types.str;
               };
-              gatewayIP = lib.mkOption {
+              cidr6 = lib.mkOption {
+                description = "IPv6 CIDR of the tunnel";
+                type = lib.types.str;
+              };
+              gatewayIPv4 = lib.mkOption {
                 description = "IPv4 of the gateway";
-                type = lib.types.attrsOf lib.types.anything;
+                type = lib.types.str;
                 readOnly = true;
-                default = (libIPv4.cidrIndex parsedCIDR4 1) // {
-                  prefixLength = 32;
-                };
+              };
+              gatewayIPv6 = lib.mkOption {
+                description = "IPv6 of the gateway";
+                type = lib.types.str;
+                readOnly = true;
               };
               gatewayPublicKey = lib.mkOption {
                 description = "Public key of the gateway for inline in ready-made client configurations";
@@ -103,15 +98,17 @@ in
                       options = {
                         enable = lib.mkEnableOption "the peer";
                         config.enable = lib.mkEnableOption "the wireguard & setup-secrets configuration corresponding to this peer, at most one configuration per group can be enabled at the same time";
-                        ipv4 = lib.mkOption {
-                          description = "The IPv4 of the peer";
-                          type = lib.types.nullOr (lib.types.attrsOf lib.types.anything);
-                          readOnly = true;
-                          default = peerIPs.${name};
-                        };
                         publicKey = lib.mkOption {
                           description = "Public key of the peer";
                           type = lib.types.str;
+                        };
+                        ipv4 = lib.mkOption {
+                          description = "The IPv4 of the peer";
+                          type = lib.types.nullOr lib.types.str;
+                        };
+                        ipv6 = lib.mkOption {
+                          description = "The IPv6 of the peer";
+                          type = lib.types.nullOr lib.types.str;
                         };
                       };
                     }
@@ -149,9 +146,12 @@ in
     networking.wireguard.interfaces = lib.mapAttrs' (
       name: value:
       lib.nameValuePair "homelab-${name}" {
-        ips = lib.mkDefault [
-          (libIPv4.toCIDR value.ipv4)
-        ];
+        ips = lib.mkDefault (
+          lib.filter (ip: ip != null) [
+            value.ipv4
+            value.ipv6
+          ]
+        );
         mtu = lib.mkDefault 1280;
         peers = [
           {
@@ -220,7 +220,7 @@ in
         '';
       }
     ) enabledGroupConfigs);
-    services.k3s.images = lib.optional cfg.enable [ image ];
+    services.k3s.images = lib.optional cfg.enable image;
     services.k3s.manifests.client-vpn.enable = cfg.enable;
     kubetree.resources.client-vpn = {
       namespace = {
@@ -241,7 +241,14 @@ in
           lib.nameValuePair "${group}.conf" ''
             [Interface]
             PrivateKey = ''${PRIVATE_KEY}
-            Address = ${libIPv4.toCIDR spec.gatewayIP}
+            Address = ${
+              lib.join "," (
+                lib.filter (ip: ip != null) [
+                  spec.gatewayIPv4
+                  spec.gatewayIPv6
+                ]
+              )
+            }
             ListenPort = ${builtins.toString listenPort}
             PostUp   = iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
             PostDown = iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
@@ -249,11 +256,23 @@ in
             ${lib.join "\n" (
               lib.mapAttrsToList (
                 name:
-                { ipv4, publicKey, ... }:
+                {
+                  publicKey,
+                  ipv4,
+                  ipv6,
+                  ...
+                }:
                 ''
                   [Peer]
                   PublicKey = ${publicKey}
-                  AllowedIPs = ${libIPv4.toCIDR ipv4}
+                  AllowedIPs = ${
+                    lib.join "," (
+                      lib.filter (ip: ip != null) [
+                        ipv4
+                        ipv6
+                      ]
+                    )
+                  }
                 ''
               ) (lib.filterAttrs (name: value: value.enable) spec.peers)
             )}
