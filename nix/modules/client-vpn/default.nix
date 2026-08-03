@@ -127,12 +127,10 @@ in
   ];
   config = {
     assertions =
-      (lib.optional cfg.enable [
-        {
-          assertion = config.homelab.routedIPPool.enable;
-          message = "Client VPN depends on the routed loadbalancer IP Pool module. Enable with `homelab.routedIPPool = { enable=true; lbIpBlock4.cidr = ...; }`";
-        }
-      ])
+      (lib.optional cfg.enable {
+        assertion = config.homelab.routedIPPool.enable;
+        message = "Client VPN depends on the routed loadbalancer IP Pool module. Enable with `homelab.routedIPPool = { enable=true; lbIpBlock4.cidr = ...; }`";
+      })
       ++ (lib.mapAttrsToList (
         name: value:
         let
