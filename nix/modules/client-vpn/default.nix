@@ -63,7 +63,6 @@ in
               cidr4 = lib.mkOption {
                 description = "IPv4 CIDR of the tunnel";
                 type = lib.types.str;
-                default = "10.16.189.0/24";
               };
               gatewayIP = lib.mkOption {
                 description = "IPv4 of the gateway";
@@ -172,11 +171,17 @@ in
             PostDown = iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
 
             ${lib.join "\n" (
-              lib.imap (idx: publicKey: ''
-                [Peer]
-                PublicKey = ${publicKey}
-                AllowedIPs = ${(ipv4.cidrIndex parsedCIDR4 (1 + idx)).address}/32
-              '') spec.peers
+              lib.imap (
+                idx: publicKey:
+                if publicKey == "" || lib.hasPrefix "#" publicKey then
+                  ""
+                else
+                  ''
+                    [Peer]
+                    PublicKey = ${publicKey}
+                    AllowedIPs = ${(ipv4.cidrIndex parsedCIDR4 (1 + idx)).address}/32
+                  ''
+              ) spec.peers
             )}
           ''
         ) cfg.groups;
