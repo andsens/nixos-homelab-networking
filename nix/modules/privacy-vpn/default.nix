@@ -9,6 +9,7 @@ let
   cfg = config.homelab.privacyVPN;
 in
 {
+  key = "${toString __curPos.file}#modules.nixos.privacy-vpn";
   options.homelab.privacyVPN = {
     enable = lib.mkEnableOption "the privacy VPN";
     clientIP4 = lib.mkOption {

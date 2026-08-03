@@ -9,6 +9,7 @@ let
   flakePkgs = self.packages.${pkgs.stdenv.hostPlatform.system};
 in
 {
+  key = "${toString __curPos.file}#modules.nixos.netutils";
   options.homelab.netutils = {
     enable = lib.mkEnableOption "the netutils debugging container";
   };

@@ -44,6 +44,7 @@ let
       );
 in
 {
+  key = "${toString __curPos.file}#modules.nixos.client-vpn";
   options.homelab.clientVPN = {
     enable = lib.mkEnableOption "the client VPN gateway";
     debug = lib.mkEnableOption "debug mode";

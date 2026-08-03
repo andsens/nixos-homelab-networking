@@ -52,6 +52,7 @@ let
   };
 in
 {
+  key = "${toString __curPos.file}#modules.nixos.unifi";
   options.homelab.services.unifi = {
     enable = lib.mkEnableOption "Unifi Controller";
     debug = lib.mkEnableOption "debug mode";

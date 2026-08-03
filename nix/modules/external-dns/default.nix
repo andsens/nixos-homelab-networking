@@ -58,6 +58,7 @@ let
   };
 in
 {
+  key = "${toString __curPos.file}#modules.nixos.external-dns";
   options.homelab.cluster.external-dns = {
     debug = lib.mkEnableOption "debug mode";
   };
