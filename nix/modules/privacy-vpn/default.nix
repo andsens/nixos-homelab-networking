@@ -7,6 +7,7 @@
 }:
 let
   cfg = config.homelab.privacyVPN;
+  hllib = inputs.homelab.lib;
 in
 {
   key = "${toString __curPos.file}#modules.nixos.privacy-vpn";
@@ -80,13 +81,13 @@ in
     setup-secrets = {
       sources.PRIVACY_VPN_PRIVATE_KEY = {
         description = "Private Key for privacy VPN connection";
-        cmd = self.lib.setup-secrets.mkScript pkgs ''cat "${config.networking.wireguard.interfaces.privacy-vpn.privateKeyFile}"'';
+        cmd = hllib.setup-secrets.mkScript pkgs ''cat "${config.networking.wireguard.interfaces.privacy-vpn.privateKeyFile}"'';
       };
       destinations = [
         {
           logPrefix = "Privacy VPN Private Key File";
           requires = [ "PRIVACY_VPN_PRIVATE_KEY" ];
-          cmd = self.lib.setup-secrets.mkScript pkgs ''
+          cmd = hllib.setup-secrets.mkScript pkgs ''
             umask 077
             printf "%s" "$PRIVACY_VPN_PRIVATE_KEY" >"${config.networking.wireguard.interfaces.privacy-vpn.privateKeyFile}"
           '';
