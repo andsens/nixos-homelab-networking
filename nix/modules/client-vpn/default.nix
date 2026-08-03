@@ -252,7 +252,9 @@ in
             }
             ListenPort = ${builtins.toString listenPort}
             PostUp   = iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+            PostUp   = ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
             PostDown = iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+            PostDown = ip6tables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
 
             ${lib.join "\n" (
               lib.mapAttrsToList (
