@@ -10,7 +10,7 @@ let
   cfg = config.homelab.clientVPN;
   container-utils = inputs.homelab.packages.${pkgs.stdenv.hostPlatform.system}.container-utils;
   hllib = inputs.homelab.lib;
-  ipv4 = hllib.ip.v4;
+  libIPv4 = hllib.ip.v4;
   listenPort = 51820;
   upScript = pkgs.writeShellScriptBin "up.sh" ''
     ${lib.getExe' pkgs.wireguard-tools "wg-quick"} up clients
@@ -35,6 +35,14 @@ let
       (pkgs.lib.getExe upScript)
     ];
   };
+  enabledPeerConfigs = peers: lib.filterAttrs (name: value: value.config.enable) peers;
+  enabledGroupConfigs =
+    lib.mapAttrs (name: value: builtins.head (builtins.attrValues (enabledPeerConfigs value.peers)))
+      (
+        lib.filterAttrs (
+          name: value: builtins.length (builtins.attrNames (enabledPeerConfigs value.peers)) == 1
+        ) cfg.groups
+      );
 in
 {
   options.homelab.clientVPN = {
@@ -44,11 +52,17 @@ in
       description = "VPN client access groups, indexed by group name. Each group is a wireguard endpoint.";
       type = lib.types.attrsOf (
         lib.types.submodule (
-          {
-            name,
-            config,
-            ...
-          }:
+          { name, ... }@subm:
+          let
+            parsedCIDR4 = libIPv4.fromString subm.config.cidr4;
+            peerIPs = lib.mergeAttrsList (
+              lib.imap (idx: spec: {
+                ${spec.name} = libIPv4.cidrIndex parsedCIDR4 (1 + idx) // {
+                  prefixLength = 32;
+                };
+              }) (lib.sortOn ({ name, value }: name) (lib.attrsToList cfg.groups.${name}.peers))
+            );
+          in
           {
             options = {
               allowEgress = lib.mkOption {
@@ -66,36 +80,43 @@ in
               };
               gatewayIP = lib.mkOption {
                 description = "IPv4 of the gateway";
-                type = lib.types.str;
+                type = lib.types.attrsOf lib.types.anything;
                 readOnly = true;
-                default = "${(ipv4.cidrIndex (ipv4.fromString config.cidr4) 1).address}";
+                default = (libIPv4.cidrIndex parsedCIDR4 1) // {
+                  prefixLength = 32;
+                };
+              };
+              gatewayPublicKey = lib.mkOption {
+                description = "Public key of the gateway for inline in ready-made client configurations";
+                type = lib.types.str;
               };
               peers = lib.mkOption {
-                description = "List of VPN client public keys, the order dictates the IP assigned from the CIDR (from x.y.z.2 onwards)";
-                type = lib.types.listOf lib.types.str;
-              };
-              # run `nix build '.#nixosConfigurations."<HOSTNAME>".config.homelab.clientVPN.groups.<GROUPNAME>.clientConfig' --impure` to output the payload
-              clientConfig = lib.mkOption {
-                description = "A derivation that specifies the wireguard client configuration";
-                type = lib.types.package;
-                readOnly = true;
-                default =
-                  let
-                    allowedIPs =
-                      (lib.optional ccfg.enableIPv4 ccfg.lbIpBlock4.cidr)
-                      ++ (lib.optional ccfg.enableIPv6 ccfg.lbIpBlock6.cidr);
-                  in
-                  pkgs.writeText "${name}.conf" ''
-                    [Interface]
-                    PrivateKey = <PRIVATE KEY>
-                    Address = ${config.gatewayIP}/32
-                    MTU = 1280 # Important, there's quite a bit of routing overhead
-
-                    [Peer]
-                    PublicKey = <PUBLIC KEY>
-                    AllowedIPs = ${lib.join ", " allowedIPs}
-                    Endpoint =  ${name}-vpn.${ccfg.domain}:51820
-                  '';
+                description = "VPN Peers in this group";
+                type = lib.types.attrsOf (
+                  lib.types.submodule (
+                    {
+                      name,
+                      config,
+                      ...
+                    }:
+                    {
+                      options = {
+                        enable = lib.mkEnableOption "the peer";
+                        config.enable = lib.mkEnableOption "the wireguard & setup-secrets configuration corresponding to this peer, at most one configuration per group can be enabled at the same time";
+                        ipv4 = lib.mkOption {
+                          description = "The IPv4 of the peer";
+                          type = lib.types.nullOr (lib.types.attrsOf lib.types.anything);
+                          readOnly = true;
+                          default = peerIPs.${name};
+                        };
+                        publicKey = lib.mkOption {
+                          description = "Public key of the peer";
+                          type = lib.types.str;
+                        };
+                      };
+                    }
+                  )
+                );
               };
             };
           }
@@ -107,42 +128,100 @@ in
     inputs.setup-secrets.nixosModules.default
     self.nixosModules.routed-ippool
   ];
-  config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = config.homelab.services.postgresql.enable;
-        message = "Client VPN depends on the routed loadbalancer IP Pool module. Enable with `homelab.routed-ippool = { enable=true; lbIpBlock4.cidr = ...; }`";
+  config = {
+    assertions =
+      (lib.optional cfg.enable [
+        {
+          assertion = config.homelab.routedIPPool.enable;
+          message = "Client VPN depends on the routed loadbalancer IP Pool module. Enable with `homelab.routedIPPool = { enable=true; lbIpBlock4.cidr = ...; }`";
+        }
+      ])
+      ++ (lib.mapAttrsToList (
+        name: value:
+        let
+          names = builtins.attrNames (enabledPeerConfigs value.peers);
+        in
+        {
+          assertion = builtins.length names <= 1;
+          message = "The Client VPN group '${name}' has multiple peer configurations enabled (${lib.join ", " names}), this is not supported";
+        }
+      ) cfg.groups);
+    networking.wireguard.interfaces = lib.mapAttrs' (
+      name: value:
+      lib.nameValuePair "homelab-${name}" {
+        ips = lib.mkDefault [
+          (libIPv4.toCIDR value.ipv4)
+        ];
+        mtu = lib.mkDefault 1280;
+        peers = [
+          {
+            allowedIPs = lib.mkDefault (
+              (lib.optional ccfg.enableIPv4 config.homelab.routedIPPool.lbIpBlock4.cidr)
+              ++ (lib.optional ccfg.enableIPv6 config.homelab.routedIPPool.lbIpBlock6.cidr)
+            );
+            endpoint = lib.mkDefault "${name}-vpn.${ccfg.domain}:51820";
+            publicKey = lib.mkDefault cfg.groups.${name}.gatewayPublicKey;
+          }
+        ];
+        privateKeyFile = lib.mkDefault "/etc/secrets.d/homelab-${name}.vpn-key";
       }
-    ];
-    services.k3s.images = [ image ];
-    setup-secrets = {
-      sources = lib.mapAttrs' (
+    ) enabledGroupConfigs;
+    setup-secrets.sources =
+      (lib.mapAttrs' (
         group: spec:
-        lib.nameValuePair "CLIENT_VPN_${group}" {
+        lib.nameValuePair "CLIENT_VPN_${lib.toUpper group}" {
+          enable = cfg.enable;
           description = "Client VPN ${group} private key";
           cmd = hllib.setup-secrets.mkScript pkgs ''
             getKubeSecret client-vpn client-vpn-private-keys ${group} || \
             ${lib.getExe' pkgs.wireguard-tools "wg"} genkey
           '';
         }
-      ) cfg.groups;
-      destinations = [
-        {
-          logPrefix = "Client VPN Private Keys";
-          requires = map (group: "CLIENT_VPN_${group}") (builtins.attrNames cfg.groups);
-          cmd = hllib.setup-secrets.mkScript pkgs ''
-            kubectl create secret generic -n client-vpn --dry-run=client -oyaml client-vpn-private-keys \
-              ${
-                lib.join "\\ \n" (
-                  map (group: ''--from-literal=${group}="$CLIENT_VPN_${group}"'') (builtins.attrNames cfg.groups)
-                )
-              } \
-              -oyaml | \
-              kubectl apply -f -
-          '';
+      ) cfg.groups)
+      // (lib.mapAttrs' (
+        name: value:
+        lib.nameValuePair "HOMELAB_${lib.toUpper name}_VPN_PRIVATE_KEY" {
+          description = "Private Key for homelab ${name} VPN connection";
+          cmd = hllib.setup-secrets.mkScript pkgs ''cat "${
+            config.networking.wireguard.interfaces."homelab-${name}".privateKeyFile
+          }"'';
         }
-      ];
-    };
+      ) enabledGroupConfigs);
+    setup-secrets.destinations = [
+      {
+        enable = cfg.enable;
+        logPrefix = "Client VPN Private Keys";
+        requires = map (group: "CLIENT_VPN_${lib.toUpper group}") (builtins.attrNames cfg.groups);
+        cmd = hllib.setup-secrets.mkScript pkgs ''
+          kubectl create secret generic -n client-vpn --dry-run=client -oyaml client-vpn-private-keys \
+            ${
+              lib.join "\\ \n" (
+                map (group: ''--from-literal=${group}="$CLIENT_VPN_${group}"'') (builtins.attrNames cfg.groups)
+              )
+            } \
+            -oyaml | \
+            kubectl apply -f -
+        '';
+      }
+    ]
+    ++ (lib.mapAttrsToList (
+      name: value:
+      let
+        envvar = "HOMELAB_${lib.toUpper name}_VPN_PRIVATE_KEY";
+      in
+      {
+        logPrefix = "Homelab ${name} VPN Private Key File";
+        requires = [ envvar ];
+        cmd = hllib.setup-secrets.mkScript pkgs ''
+          umask 077
+          printf "%s" "$${envvar}" >"${
+            config.networking.wireguard.interfaces."homelab-${name}".privateKeyFile
+          }"
+        '';
+      }
+    ) enabledGroupConfigs);
+    services.k3s.images = lib.optional cfg.enable [ image ];
+    services.k3s.manifests.client-vpn.enable = cfg.enable;
     kubetree.resources.client-vpn = {
       namespace = {
         apiVersion = "v1";
@@ -159,29 +238,24 @@ in
         };
         data = lib.mapAttrs' (
           group: spec:
-          let
-            parsedCIDR4 = ipv4.fromString spec.cidr4;
-          in
           lib.nameValuePair "${group}.conf" ''
             [Interface]
             PrivateKey = ''${PRIVATE_KEY}
-            Address = ${ipv4.toCIDR (ipv4.cidrIndex parsedCIDR4 1)}
+            Address = ${libIPv4.toCIDR spec.gatewayIP}
             ListenPort = ${builtins.toString listenPort}
             PostUp   = iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
             PostDown = iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
 
             ${lib.join "\n" (
-              lib.imap (
-                idx: publicKey:
-                if publicKey == "" || lib.hasPrefix "#" publicKey then
-                  ""
-                else
-                  ''
-                    [Peer]
-                    PublicKey = ${publicKey}
-                    AllowedIPs = ${(ipv4.cidrIndex parsedCIDR4 (1 + idx)).address}/32
-                  ''
-              ) spec.peers
+              lib.mapAttrsToList (
+                name:
+                { ipv4, publicKey, ... }:
+                ''
+                  [Peer]
+                  PublicKey = ${publicKey}
+                  AllowedIPs = ${libIPv4.toCIDR ipv4}
+                ''
+              ) (lib.filterAttrs (name: value: value.enable) spec.peers)
             )}
           ''
         ) cfg.groups;
