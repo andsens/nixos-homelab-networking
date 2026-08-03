@@ -155,8 +155,8 @@ in
         peers = [
           {
             allowedIPs = lib.mkDefault (
-              (lib.optional ccfg.enableIPv4 config.homelab.routedIPPool.lbIpBlock4.cidr)
-              ++ (lib.optional ccfg.enableIPv6 config.homelab.routedIPPool.lbIpBlock6.cidr)
+              (lib.optional ccfg.enableIPv4 config.homelab.cilium.lbIpBlock4.cidr)
+              ++ (lib.optional ccfg.enableIPv6 config.homelab.cilium.lbIpBlock6.cidr)
             );
             endpoint = lib.mkDefault "${name}-vpn.${ccfg.domain}:51820";
             publicKey = lib.mkDefault cfg.groups.${name}.gatewayPublicKey;
