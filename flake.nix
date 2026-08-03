@@ -26,6 +26,10 @@
       inputs.kubetree.follows = "kubetree";
       inputs.kube-generators.follows = "kube-generators";
     };
+    nixhelm = {
+      url = "github:nix-community/nixhelm";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
   outputs =
     {
