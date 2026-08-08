@@ -234,7 +234,7 @@ in
         kind = "ConfigMap";
         metadata = {
           namespace = "client-vpn";
-          name = "config";
+          name = "client-vpn";
           labels."app.kubernetes.io/name" = "client-vpn";
         };
         data = lib.mapAttrs' (
@@ -375,7 +375,7 @@ in
                   type = "CharDevice";
                 };
                 config-tmp.emptyDir = { };
-                config.configMap.name = "config";
+                config.configMap.name = "client-vpn";
               };
             };
           };
