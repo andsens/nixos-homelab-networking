@@ -65,20 +65,6 @@
             unifi = importApply ./nix/modules/unifi { inherit self inputs; };
           };
         };
-        perSystem = { system }: {
-          _module.args.pkgs = import inputs.nixpkgs {
-            inherit system;
-            overlays = [
-              (final: prev: {
-                mongodb-7_0 =
-                  (import inputs.nixpkgs-mongodb-pin {
-                    inherit system;
-                  }).mongodb-7_0;
-              })
-            ];
-            config = { };
-          };
-        };
       }
     );
 }

@@ -10,6 +10,11 @@ let
   ccfg = config.homelab.cluster;
   cfg = config.homelab.services.unifi;
   jrePkg = pkgs.jdk25_headless;
+  mongodb-7_0 =
+    (import inputs.nixpkgs-mongodb-pin {
+      system = pkgs.stdenv.hostPlatform.system;
+      config.allowUnfreePredicate = config.nixpkgs.config.allowUnfreePredicate;
+    }).mongodb-7_0;
   unifiPkg = pkgs.stdenvNoCC.mkDerivation {
     name = "mk-unifi-home";
     dontUnpack = true;
@@ -17,7 +22,7 @@ let
       runHook preInstall
       mkdir $out
       cp -r ${pkgs.unifi}/* $out/
-      ln -s "${pkgs.mongodb-7_0}/bin" $out/bin
+      ln -s "${mongodb-7_0}/bin" $out/bin
       ln -s /var/lib/unifi/data $out/data
       ln -s /var/lib/unifi/logs $out/logs
       ln -s /var/lib/unifi/run $out/run
@@ -35,14 +40,12 @@ let
   '';
   image = pkgs.dockerTools.buildLayeredImage {
     name = "cluster.local/unifi";
-    contents =
-      with pkgs;
-      [
-        mongodb-7_0
-        bash
-        run
-      ]
-      ++ lib.optionals cfg.debug ccfg.debugTools;
+    contents = [
+      pkgs.bash
+      mongodb-7_0
+      run
+    ]
+    ++ lib.optionals cfg.debug ccfg.debugTools;
     config.Entrypoint = [
       (lib.getExe pkgs.tini)
       (lib.getExe run)
