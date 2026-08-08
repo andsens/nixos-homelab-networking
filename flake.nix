@@ -17,7 +17,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-parts.follows = "flake-parts";
     };
-    shared = {
+    homelab-shared = {
       url = "github:nixos-homelab/shared";
       inputs.systems.follows = "systems";
       inputs.nixpkgs.follows = "nixpkgs";
