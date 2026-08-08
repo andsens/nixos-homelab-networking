@@ -56,12 +56,15 @@ in
       default = { };
     };
   };
-  imports = self.lib.importsApply [
-    ./bgp.nix
-    ./cidr-groups.nix
-    ./firewall.nix
-    ./network-policies.nix
-  ];
+  imports =
+    self.lib.importsApply [
+      ./bgp.nix
+      ./cidr-groups.nix
+      ./firewall.nix
+      ./kubetree.nix
+      ./network-policies.nix
+    ]
+    ++ [ self.nixosModules.privacy-vpn ];
   config = lib.mkIf cfg.enable {
     assertions = [
       {

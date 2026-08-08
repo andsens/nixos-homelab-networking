@@ -167,7 +167,7 @@ in
         apiVersion = "cluster.local";
         kind = "ServiceNetpols";
         metadata.name = "unifi";
-        spec.toPortsFlattened = [ 8443 ];
+        spec.ports = [ 8443 ];
       };
       macro = {
         apiVersion = "cluster.local";
