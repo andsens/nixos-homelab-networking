@@ -7,7 +7,7 @@
 }:
 let
   cfg = config.homelab.privacyVPN;
-  hllib = inputs.homelab.lib;
+  hllib = inputs.shared.lib;
 in
 {
   key = "${toString __curPos.file}#modules.nixos.privacy-vpn";

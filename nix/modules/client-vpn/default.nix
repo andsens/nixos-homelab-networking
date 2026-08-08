@@ -8,8 +8,8 @@
 let
   ccfg = config.homelab.cluster;
   cfg = config.homelab.clientVPN;
-  container-utils = inputs.homelab.packages.${pkgs.stdenv.hostPlatform.system}.container-utils;
-  hllib = inputs.homelab.lib;
+  container-utils = inputs.shared.packages.${pkgs.stdenv.hostPlatform.system}.container-utils;
+  hllib = inputs.shared.lib;
   listenPort = 51820;
   upScript = pkgs.writeShellScriptBin "up.sh" ''
     ${lib.getExe' pkgs.wireguard-tools "wg-quick"} up clients
